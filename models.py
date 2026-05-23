@@ -301,7 +301,7 @@ class MatkaPredictionEngine:
             ]])
             
             # Train Open Classifier
-            clf_o = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42)
+            clf_o = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42, n_jobs=-1)
             clf_o.fit(X_o, y_o)
             # Ensure model understands all classes 0-9
             # In case some class didn't appear in train (rare but possible), we map predict_proba classes
@@ -312,7 +312,7 @@ class MatkaPredictionEngine:
             probs_open = probs_o_full
             
             # Train Close Classifier
-            clf_c = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42)
+            clf_c = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42, n_jobs=-1)
             clf_c.fit(X_c, y_c)
             probs_c_raw = clf_c.predict_proba(target_feat_c)[0]
             probs_c_full = np.zeros(10)
@@ -381,12 +381,15 @@ class MatkaPredictionEngine:
             print(f"GBM Model training failed, falling back to frequencies: {e}")
             return probs_open, probs_close, None, None
 
-    def predict_next(self, df_train=None, target_weekday=None, weights=None):
+    def predict_next(self, df_train=None, target_weekday=None, weights=None, window_size=90):
         """
         Generates ensemble prediction for the next draw.
         """
         if df_train is None:
             df_train = self.df
+            
+        if window_size is not None and len(df_train) > window_size:
+            df_train = df_train.tail(window_size)
             
         if len(df_train) < 7:
             raise ValueError("Insufficient training records.")
@@ -500,7 +503,7 @@ class MatkaPredictionEngine:
             }
         }
         
-    def backtest(self, test_draws_count=50, weights=None):
+    def backtest(self, test_draws_count=50, weights=None, window_size=90):
         """
         Simulate historical predictions for the last N draws chronologically.
         Computes predictive accuracy and logs metrics.
@@ -534,7 +537,7 @@ class MatkaPredictionEngine:
             actual_weekday = actual_row["weekday"]
             
             # Predict
-            pred = self.predict_next(df_train, target_weekday=actual_weekday, weights=weights)
+            pred = self.predict_next(df_train, target_weekday=actual_weekday, weights=weights, window_size=window_size)
             
             # Check hits
             is_hit_open = (pred["open_digit"] == actual_open)

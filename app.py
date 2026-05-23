@@ -364,14 +364,21 @@ st.markdown("""
 
 # Helper function to trigger scraping/updating data
 def sync_live_data():
-    with st.spinner("Scraping live records from tara567... Please wait."):
+    market = st.session_state.get("selected_market", "Mahadevi")
+    with st.spinner(f"Scraping live {market} records from tara567... Please wait."):
         try:
-            records = scrape_mahadevi_chart()
+            records = scrape_mahadevi_chart(market_name=market)
             base_dir = os.path.dirname(os.path.abspath(__file__))
-            output_path = os.path.join(base_dir, "mahadevi_history.json")
+            filename = "mahadevi_history.json"
+            if market == "Mahadevi Morning":
+                filename = "mahadevi_morning_history.json"
+            elif market == "Mahadevi Night":
+                filename = "mahadevi_night_history.json"
+                
+            output_path = os.path.join(base_dir, filename)
             with open(output_path, "w") as f:
                 json.dump(records, f, indent=4)
-            st.toast("Database updated successfully!", icon="🔥")
+            st.toast(f"{market} database updated successfully!", icon="🔥")
             # Force cache clear for reload
             st.cache_data.clear()
             st.rerun()
@@ -380,16 +387,24 @@ def sync_live_data():
 
 # Load cached data
 @st.cache_data
-def get_cached_dataset():
-    df_raw, df_valid = load_data()
+def get_cached_dataset(market_name="Mahadevi"):
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    filename = "mahadevi_history.json"
+    if market_name == "Mahadevi Morning":
+        filename = "mahadevi_morning_history.json"
+    elif market_name == "Mahadevi Night":
+        filename = "mahadevi_night_history.json"
+        
+    filepath = os.path.join(base_dir, filename)
+    df_raw, df_valid = load_data(filepath)
     stats = get_basic_statistics(df_valid)
     return df_raw, df_valid, stats
 
 @st.cache_data
-def run_selected_method_backtest(df_valid, method_name, custom_formula="", limit=30):
+def run_selected_method_backtest(df_valid, method_name, custom_formula="", limit=30, window_size=90):
     if method_name == "ml_ensemble":
         default_w = {"freq": 0.10, "markov": 0.20, "pattern": 0.20, "ml": 0.25, "gbm": 0.25}
-        res = engine.backtest(test_draws_count=limit, weights=default_w)
+        res = engine.backtest(test_draws_count=limit, weights=default_w, window_size=window_size)
         return {
             "touchRate": f"{(res['top3_rate_open'] + res['top3_rate_close'])/2 * 100:.1f}",
             "singleRate": f"{res['accuracy_open'] * 100:.1f}",
@@ -470,6 +485,28 @@ def get_baseline_backtest_results(df_valid, limit=30):
     return engine_temp.backtest(test_draws_count=limit)
 
 def make_compatible_prediction(algebraic_res, target_date, known_open=None):
+    def generate_known_open_jodis(k_open, c_digit, t_digits):
+        j_list = [f"{k_open}{c_digit}"]
+        for d in t_digits:
+            j = f"{k_open}{d}"
+            if j not in j_list:
+                j_list.append(j)
+        for d in t_digits:
+            try:
+                cut = (int(d) + 5) % 10
+                j = f"{k_open}{cut}"
+                if j not in j_list:
+                    j_list.append(j)
+            except:
+                pass
+        for x in range(10):
+            if len(j_list) >= 8:
+                break
+            j = f"{k_open}{x}"
+            if j not in j_list:
+                j_list.append(j)
+        return j_list[:8]
+
     if "open_probs" in algebraic_res:
         pred = algebraic_res.copy()
         if known_open is not None:
@@ -482,6 +519,10 @@ def make_compatible_prediction(algebraic_res, target_date, known_open=None):
             pred["top3_open_digits"] = [known_open] + [d for d in pred["top3_open_digits"] if d != known_open][:2]
             pred["top3_open_panas"] = get_panas_for_digit(known_open)[:3]
             pred["overall_confidence"] = pred["close_confidence"]
+            
+            # Regenerate suggested jodis to start with known_open
+            t_digits = [str(x) for x in pred.get("top3_close_digits", [])]
+            pred["jodis"] = generate_known_open_jodis(known_open, pred["close_digit"], t_digits)
         return pred
 
     touch_digits = algebraic_res.get("touchDigits", [])
@@ -547,6 +588,10 @@ def make_compatible_prediction(algebraic_res, target_date, known_open=None):
         top3_close_digits = [close_digit]
 
     predicted_jodi = f"{open_digit}{close_digit}"
+
+    # If known_open is provided, regenerate jodis
+    if known_open is not None:
+        jodis = generate_known_open_jodis(known_open, close_digit, touch_digits)
 
     return {
         "target_weekday": target_date.strftime("%A"),
@@ -699,18 +744,45 @@ def render_prediction_card(pred, is_past_date=False, actual_row=None):
         </div>
     """)
 
+# ==================== INITIALIZE STATE & MARKET VARIATION ====================
+if "selected_market" not in st.session_state:
+    st.session_state.selected_market = "Mahadevi"
+
+# ==================== SIDEBAR PART 1: MARKET SELECTOR ====================
+with st.sidebar:
+    st.markdown("<div style='text-align: center; margin-bottom: 20px;'><span style='font-size: 3rem;'>🔮</span></div>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; font-family: Space Grotesk, sans-serif; color: #fff;'>Control Center</h2>", unsafe_allow_html=True)
+    
+    st.markdown("<h4 style='font-family: Space Grotesk, sans-serif; color: #ff8c00; margin-bottom: 10px;'>📊 Select Market</h4>", unsafe_allow_html=True)
+    selected_market = st.selectbox(
+        "Market Variation",
+        ["Mahadevi Morning", "Mahadevi", "Mahadevi Night"],
+        index=["Mahadevi Morning", "Mahadevi", "Mahadevi Night"].index(st.session_state.selected_market),
+        key="selected_market_selectbox"
+    )
+    if selected_market != st.session_state.selected_market:
+        st.session_state.selected_market = selected_market
+        st.cache_data.clear()
+        st.rerun()
+
 # Initialize app state or load data
 try:
-    df_raw, df_valid, hist_stats = get_cached_dataset()
+    df_raw, df_valid, hist_stats = get_cached_dataset(st.session_state.selected_market)
 except Exception as e:
-    st.warning("Historical data cache not found. Attempting initial scrape...")
+    st.warning(f"Historical data cache for {st.session_state.selected_market} not found. Attempting initial scrape...")
     try:
-        records = scrape_mahadevi_chart()
+        records = scrape_mahadevi_chart(market_name=st.session_state.selected_market)
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        output_path = os.path.join(base_dir, "mahadevi_history.json")
+        filename = "mahadevi_history.json"
+        if st.session_state.selected_market == "Mahadevi Morning":
+            filename = "mahadevi_morning_history.json"
+        elif st.session_state.selected_market == "Mahadevi Night":
+            filename = "mahadevi_night_history.json"
+            
+        output_path = os.path.join(base_dir, filename)
         with open(output_path, "w") as f:
             json.dump(records, f, indent=4)
-        df_raw, df_valid, hist_stats = get_cached_dataset()
+        df_raw, df_valid, hist_stats = get_cached_dataset(st.session_state.selected_market)
     except Exception as scrape_err:
         st.error(f"Initialization error: {scrape_err}")
         st.stop()
@@ -718,11 +790,8 @@ except Exception as e:
 # Prediction engine setup
 engine = MatkaPredictionEngine(df_valid)
 
-# ==================== SIDEBAR ====================
+# ==================== SIDEBAR PART 2: CONTROL CONTROLS ====================
 with st.sidebar:
-    st.markdown("<div style='text-align: center; margin-bottom: 20px;'><span style='font-size: 3rem;'>🔮</span></div>", unsafe_allow_html=True)
-    st.markdown("<h2 style='text-align: center; font-family: Space Grotesk, sans-serif; color: #fff;'>Control Center</h2>", unsafe_allow_html=True)
-    
     # Navigation menu
     nav_selection = st.radio(
         "Navigation",
@@ -846,8 +915,38 @@ with st.sidebar:
     )
 
 # ==================== HEADER ====================
-st.markdown("<h1 class='title-gradient'>Mahadevi AI Predictor</h1>", unsafe_allow_html=True)
+market_display = st.session_state.selected_market
+title_emoji = "🕒"
+if market_display == "Mahadevi Morning":
+    title_emoji = "☀️"
+elif market_display == "Mahadevi Night":
+    title_emoji = "🌙"
+
+st.markdown(f"<h1 class='title-gradient'>{title_emoji} {market_display} AI Predictor</h1>", unsafe_allow_html=True)
 st.markdown("<p class='subtitle-text'>An intelligent machine learning, probability-based, and statistical pattern analysis engine built for educational research.</p>", unsafe_allow_html=True)
+
+morning_border = "1.5px solid #ff8c00" if market_display == "Mahadevi Morning" else "1px solid rgba(255, 140, 0, 0.15)"
+morning_bg = "rgba(255, 140, 0, 0.15)" if market_display == "Mahadevi Morning" else "rgba(255, 140, 0, 0.08)"
+
+standard_border = "1.5px solid #3b82f6" if market_display == "Mahadevi" else "1px solid rgba(59, 130, 246, 0.15)"
+standard_bg = "rgba(59, 130, 246, 0.15)" if market_display == "Mahadevi" else "rgba(59, 130, 246, 0.08)"
+
+night_border = "1.5px solid #ec4899" if market_display == "Mahadevi Night" else "1px solid rgba(236, 72, 153, 0.15)"
+night_bg = "rgba(236, 72, 153, 0.15)" if market_display == "Mahadevi Night" else "rgba(236, 72, 153, 0.08)"
+
+st.markdown(f"""
+<div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: -10px; margin-bottom: 25px; font-size: 0.8rem; font-family: 'Space Grotesk', sans-serif;">
+    <div style="background: {morning_bg}; color: #ff8c00; border: {morning_border}; padding: 5px 12px; border-radius: 8px; font-weight: 500; display: flex; align-items: center; gap: 6px;">
+        ☀️ <b>Mahadevi Morning:</b> 11:45 AM – 12:45 PM
+    </div>
+    <div style="background: {standard_bg}; color: #3b82f6; border: {standard_border}; padding: 5px 12px; border-radius: 8px; font-weight: 500; display: flex; align-items: center; gap: 6px;">
+        🕒 <b>Mahadevi:</b> 04:30 PM – 06:30 PM
+    </div>
+    <div style="background: {night_bg}; color: #ec4899; border: {night_border}; padding: 5px 12px; border-radius: 8px; font-weight: 500; display: flex; align-items: center; gap: 6px;">
+        🌙 <b>Mahadevi Night:</b> 07:50 PM – 08:50 PM
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 if nav_selection == "🔮 Live Predictions":
     is_past_date = not selected_date_choice.startswith("Next Draw")
@@ -1527,6 +1626,7 @@ elif nav_selection == "⚙️ Model Tuning & Backtest":
             with col_back_config:
                 st.markdown("<h5 style='color: #cbd5e1; font-family: Space Grotesk, sans-serif; font-size: 1rem;'>Backtest Settings</h5>", unsafe_allow_html=True)
                 backtest_n = st.slider("Number of historical draws to test", 10, 100, 30, 5, key="ml_backtest_n")
+                window_size = st.slider("Training Window Size (Draws)", 30, 200, 90, 10, key="ml_window_size", help="Limit the model to training only on the N most recent draws to adapt to pattern drift.")
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 trigger_backtest = st.button("🚀 Run ML Backtest Simulation", use_container_width=True)
@@ -1534,7 +1634,7 @@ elif nav_selection == "⚙️ Model Tuning & Backtest":
             with col_back_run:
                 if trigger_backtest:
                     with st.spinner("Running historical ML backtest simulations..."):
-                        backtest_res = engine.backtest(test_draws_count=backtest_n, weights=weights)
+                        backtest_res = engine.backtest(test_draws_count=backtest_n, weights=weights, window_size=window_size)
                         
                         if "error" in backtest_res:
                             st.error(backtest_res["error"])

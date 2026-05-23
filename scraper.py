@@ -5,27 +5,41 @@ from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
 
-def get_url_from_api_config():
+def get_url_from_api_config(market_name="Mahadevi"):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(base_dir, "matka_api.json")
+    default_urls = {
+        "Mahadevi Morning": "https://tara567.com/mrecords/mahadevi-morning-panel-chart",
+        "Mahadevi": "https://tara567.com/mrecords/mahadevi-panel-chart",
+        "Mahadevi Night": "https://tara567.com/mrecords/mahadevi-night-panel-chart"
+    }
     if os.path.exists(config_path):
         try:
             with open(config_path, "r") as f:
                 config = json.load(f)
-                return config.get("Mahadevi")
+                url = config.get(market_name)
+                if url:
+                    return url
         except Exception as e:
             print(f"Error reading api config: {e}")
-    return "https://tara567.com/mrecords/mahadevi-panel-chart"
+    return default_urls.get(market_name, default_urls["Mahadevi"])
 
-def scrape_mahadevi_chart(url=None):
+def scrape_mahadevi_chart(url=None, market_name="Mahadevi"):
     if not url:
-        url = get_url_from_api_config()
+        url = get_url_from_api_config(market_name)
     
     print(f"Scraping Matka data from: {url}")
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
+    # Map market_name to correct filename
+    filename = "mahadevi_history.json"
+    if market_name == "Mahadevi Morning":
+        filename = "mahadevi_morning_history.json"
+    elif market_name == "Mahadevi Night":
+        filename = "mahadevi_night_history.json"
+        
     try:
         response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
@@ -34,7 +48,7 @@ def scrape_mahadevi_chart(url=None):
         print(f"Failed to fetch live URL: {e}. Checking local cache source...")
         # Fallback to local cache file if it exists
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        local_cache_path = os.path.join(base_dir, "mahadevi_history.json")
+        local_cache_path = os.path.join(base_dir, filename)
         if os.path.exists(local_cache_path):
             print(f"Reading from local cache: {local_cache_path}")
             try:
@@ -170,16 +184,24 @@ def parse_html(html_content):
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    output_path = os.path.join(base_dir, "mahadevi_history.json")
-    try:
-        records = scrape_mahadevi_chart()
-        print(f"Successfully scraped {len(records)} records ({len([r for r in records if r['is_valid']])} valid draws).")
-        
-        with open(output_path, "w") as f:
-            json.dump(records, f, indent=4)
-        print(f"Saved cache to {output_path}")
-    except Exception as e:
-        print(f"Scraper execution failed: {e}")
+    markets = {
+        "Mahadevi Morning": "mahadevi_morning_history.json",
+        "Mahadevi": "mahadevi_history.json",
+        "Mahadevi Night": "mahadevi_night_history.json"
+    }
+    
+    for market_name, filename in markets.items():
+        print(f"\n--- Scraping {market_name} ---")
+        output_path = os.path.join(base_dir, filename)
+        try:
+            records = scrape_mahadevi_chart(market_name=market_name)
+            print(f"Successfully scraped {len(records)} records ({len([r for r in records if r['is_valid']])} valid draws).")
+            
+            with open(output_path, "w") as f:
+                json.dump(records, f, indent=4)
+            print(f"Saved cache to {output_path}")
+        except Exception as e:
+            print(f"Scraper execution failed for {market_name}: {e}")
 
 if __name__ == "__main__":
     main()
