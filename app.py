@@ -699,7 +699,7 @@ with st.sidebar:
     dates_list = df_valid["date"].sort_values(ascending=False).dt.strftime("%Y-%m-%d").tolist()
     next_date_str = (df_valid["date"].max() + timedelta(days=1)).strftime("%Y-%m-%d")
     options = [f"Next Draw ({next_date_str})"] + dates_list
-    selected_date_choice = st.selectbox("Target Date", options, index=1, help="Select 'Next Draw' to predict tomorrow, or select a past date to backtest and check hits.")
+    selected_date_choice = st.selectbox("Target Date", options, index=0, help="Select 'Next Draw' to predict tomorrow, or select a past date to backtest and check hits.")
     
     if selected_date_choice.startswith("Next Draw"):
         target_date = df_valid["date"].max() + timedelta(days=1)
