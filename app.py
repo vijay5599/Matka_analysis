@@ -422,6 +422,11 @@ def run_selected_method_backtest(df_valid, method_name, custom_formula="", limit
                 "top3_rate_open": 0.0, "top3_rate_close": 0.0, "accuracy_jodi": 0.0
             }
 
+@st.cache_data
+def get_baseline_backtest_results(df_valid, limit=30):
+    engine_temp = MatkaPredictionEngine(df_valid)
+    return engine_temp.backtest(test_draws_count=limit)
+
 def make_compatible_prediction(algebraic_res, target_date, known_open=None):
     if "open_probs" in algebraic_res:
         pred = algebraic_res.copy()
@@ -813,27 +818,28 @@ if nav_selection == "🔮 Live Predictions":
         actual_row = None
 
     # Get prediction based on selected method
-    if selected_method == "ml_ensemble":
-        pred = engine.predict_next(df_train=df_train, target_weekday=target_date.weekday(), weights=weights)
-        if known_open is not None:
-            pred = make_compatible_prediction(pred, target_date, known_open=known_open)
-    else:
-        if selected_method == "date_touch":
-            raw_pred = predict_date_touch(target_date)
-        elif selected_method == "yesterday_sum":
-            raw_pred = predict_yesterday_sum(df_train, target_date)
-        elif selected_method == "weekly_repeat":
-            raw_pred = predict_weekly_repeat(df_train, target_date)
-        elif selected_method == "panel_multiplier":
-            raw_pred = predict_panel_multiplier(df_train, target_date)
-        elif selected_method == "custom":
-            raw_pred = predict_custom_formula(df_train, target_date, custom_formula_str)
-        elif selected_method == "ai_pattern":
-            raw_pred = predict_ai_pattern(df_train, target_date)
-        elif selected_method == "adaptive_line":
-            raw_pred = predict_adaptive_line(df_train, target_date)
-            
-        pred = make_compatible_prediction(raw_pred, target_date, known_open=known_open)
+    with st.spinner("Calculating predictions... 🔮"):
+        if selected_method == "ml_ensemble":
+            pred = engine.predict_next(df_train=df_train, target_weekday=target_date.weekday(), weights=weights)
+            if known_open is not None:
+                pred = make_compatible_prediction(pred, target_date, known_open=known_open)
+        else:
+            if selected_method == "date_touch":
+                raw_pred = predict_date_touch(target_date)
+            elif selected_method == "yesterday_sum":
+                raw_pred = predict_yesterday_sum(df_train, target_date)
+            elif selected_method == "weekly_repeat":
+                raw_pred = predict_weekly_repeat(df_train, target_date)
+            elif selected_method == "panel_multiplier":
+                raw_pred = predict_panel_multiplier(df_train, target_date)
+            elif selected_method == "custom":
+                raw_pred = predict_custom_formula(df_train, target_date, custom_formula_str)
+            elif selected_method == "ai_pattern":
+                raw_pred = predict_ai_pattern(df_train, target_date)
+            elif selected_method == "adaptive_line":
+                raw_pred = predict_adaptive_line(df_train, target_date)
+                
+            pred = make_compatible_prediction(raw_pred, target_date, known_open=known_open)
 
     # Check individual hits for styling the main cards
     open_hit_style = ""
@@ -1156,7 +1162,8 @@ if nav_selection == "🔮 Live Predictions":
             
         # Get baseline backtest results
         try:
-            baseline_res = engine.backtest(test_draws_count=30)
+            with st.spinner("Evaluating baseline backtest accuracy... 📈"):
+                baseline_res = get_baseline_backtest_results(df_valid, limit=30)
             with st.container(border=True):
                 render_html(f"""
                     <div class="card-title">📈 Model Accuracy (30-Draw Backtest)</div>
