@@ -747,6 +747,8 @@ def render_prediction_card(pred, is_past_date=False, actual_row=None):
 # ==================== INITIALIZE STATE & MARKET VARIATION ====================
 if "selected_market" not in st.session_state:
     st.session_state.selected_market = "Mahadevi"
+if "market_switching" not in st.session_state:
+    st.session_state.market_switching = False
 
 # ==================== SIDEBAR PART 1: MARKET SELECTOR ====================
 with st.sidebar:
@@ -762,8 +764,17 @@ with st.sidebar:
     )
     if selected_market != st.session_state.selected_market:
         st.session_state.selected_market = selected_market
+        st.session_state.market_switching = True
         st.cache_data.clear()
         st.rerun()
+
+# Show spinner while switching markets
+if st.session_state.market_switching:
+    st.session_state.market_switching = False
+    with st.spinner(f"⏳ Loading {st.session_state.selected_market} data, please wait..."):
+        import time
+        time.sleep(0.8)
+    st.rerun()
 
 # Initialize app state or load data
 try:
