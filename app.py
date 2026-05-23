@@ -404,15 +404,57 @@ def run_selected_method_backtest(df_valid, method_name, custom_formula="", limit
     else:
         res = run_formula_backtest(df_valid, method_name, custom_formula, limit)
         if res:
+            detailed = res.get("detailed_results", [])
+            total = len(detailed)
+            if total > 0:
+                open_hits = 0
+                close_hits = 0
+                open_top3_hits = 0
+                close_top3_hits = 0
+                for item in detailed:
+                    p_touch = item.get("predicted_touch", [])
+                    act_open = item.get("actual_open")
+                    act_close = item.get("actual_close")
+                    
+                    if p_touch:
+                        pred_open = p_touch[0]
+                        pred_close = p_touch[1] if len(p_touch) > 1 else p_touch[0]
+                        top3_open = p_touch[:3]
+                        top3_close = p_touch[1:4] if len(p_touch) > 1 else [p_touch[0]]
+                    else:
+                        pred_open = None
+                        pred_close = None
+                        top3_open = []
+                        top3_close = []
+                        
+                    if pred_open == act_open:
+                        open_hits += 1
+                    if pred_close == act_close:
+                        close_hits += 1
+                    if act_open in top3_open:
+                        open_top3_hits += 1
+                    if act_close in top3_close:
+                        close_top3_hits += 1
+                
+                accuracy_open = open_hits / total
+                accuracy_close = close_hits / total
+                top3_rate_open = open_top3_hits / total
+                top3_rate_close = close_top3_hits / total
+            else:
+                accuracy_open = 0.0
+                accuracy_close = 0.0
+                top3_rate_open = 0.0
+                top3_rate_close = 0.0
+
             return {
                 "touchRate": res["touchRate"],
                 "singleRate": res["singleRate"],
                 "jodiRate": res["jodiRate"],
                 "panaRate": res["panaRate"],
-                "accuracy_open": float(res["singleRate"])/100.0,
-                "accuracy_close": float(res["singleRate"])/100.0,
-                "top3_rate_open": float(res["touchRate"])/100.0,
-                "top3_rate_close": float(res["touchRate"])/100.0,
+                "accuracy_open": accuracy_open,
+                "accuracy_close": accuracy_close,
+                "top3_rate_open": top3_rate_open,
+                "top3_rate_close": top3_rate_close,
                 "accuracy_jodi": float(res["jodiRate"])/100.0
             }
         else:
@@ -1162,11 +1204,16 @@ if nav_selection == "🔮 Live Predictions":
             
         # Get baseline backtest results
         try:
-            with st.spinner("Evaluating baseline backtest accuracy... 📈"):
-                baseline_res = get_baseline_backtest_results(df_valid, limit=30)
+            with st.spinner(f"Evaluating {selected_method_name} backtest accuracy... 📈"):
+                baseline_res = run_selected_method_backtest(
+                    df_valid,
+                    selected_method,
+                    custom_formula=custom_formula_str,
+                    limit=30
+                )
             with st.container(border=True):
                 render_html(f"""
-                    <div class="card-title">📈 Model Accuracy (30-Draw Backtest)</div>
+                    <div class="card-title">📈 {selected_method_name} Accuracy (30-Draw Backtest)</div>
                     <p style="color: #94a3b8; font-size: 0.85rem; margin-top: -10px; margin-bottom: 20px;">
                         Historical prediction accuracy measured on the last 30 draws chronologically (no lookahead bias).
                     </p>
