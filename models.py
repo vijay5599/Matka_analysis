@@ -5,7 +5,11 @@ import numpy as np
 from datetime import datetime, timedelta
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 
-def load_data(filepath="/Users/vijay5599/Developer/Projects/AI Agents/Matka_analysis/mahadevi_history.json"):
+def load_data(filepath=None):
+    if filepath is None:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        filepath = os.path.join(base_dir, "mahadevi_history.json")
+        
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"Historical data file not found at {filepath}")
     

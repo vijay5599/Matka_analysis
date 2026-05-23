@@ -463,7 +463,8 @@ def sync_live_data():
     with st.spinner("Scraping live records from tara567... Please wait."):
         try:
             records = scrape_mahadevi_chart()
-            output_path = "/Users/vijay5599/Developer/Projects/AI Agents/Matka_analysis/mahadevi_history.json"
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            output_path = os.path.join(base_dir, "mahadevi_history.json")
             with open(output_path, "w") as f:
                 json.dump(records, f, indent=4)
             st.toast("Database updated successfully!", icon="🔥")
@@ -754,7 +755,8 @@ except Exception as e:
     st.warning("Historical data cache not found. Attempting initial scrape...")
     try:
         records = scrape_mahadevi_chart()
-        output_path = "/Users/vijay5599/Developer/Projects/AI Agents/Matka_analysis/mahadevi_history.json"
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        output_path = os.path.join(base_dir, "mahadevi_history.json")
         with open(output_path, "w") as f:
             json.dump(records, f, indent=4)
         df_raw, df_valid, hist_stats = get_cached_dataset()

@@ -6,7 +6,8 @@ import requests
 from bs4 import BeautifulSoup
 
 def get_url_from_api_config():
-    config_path = "/Users/vijay5599/Developer/Projects/AI Agents/Matka_analysis/matka_api.json"
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(base_dir, "matka_api.json")
     if os.path.exists(config_path):
         try:
             with open(config_path, "r") as f:
@@ -31,14 +32,16 @@ def scrape_mahadevi_chart(url=None):
         html_content = response.text
     except Exception as e:
         print(f"Failed to fetch live URL: {e}. Checking local cache source...")
-        # Fallback to local downloaded step-13 file if exists, for safety in offline/sandboxed execution
-        local_path = "/Users/vijay5599/.gemini/antigravity-ide/brain/348f9703-2d4f-4bb1-bcd1-e25dfae915cb/.system_generated/steps/13/content.md"
-        if os.path.exists(local_path):
-            print(f"Reading from local content cache: {local_path}")
-            with open(local_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-                # Skip the metadata header in content.md
-                html_content = "".join(lines[8:])
+        # Fallback to local cache file if it exists
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        local_cache_path = os.path.join(base_dir, "mahadevi_history.json")
+        if os.path.exists(local_cache_path):
+            print(f"Reading from local cache: {local_cache_path}")
+            try:
+                with open(local_cache_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as read_err:
+                raise RuntimeError(f"Could not read local cache file: {read_err}")
         else:
             raise RuntimeError(f"Could not fetch URL and local backup not found. Error: {e}")
             
@@ -166,7 +169,8 @@ def parse_html(html_content):
     return parsed_records
 
 def main():
-    output_path = "/Users/vijay5599/Developer/Projects/AI Agents/Matka_analysis/mahadevi_history.json"
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    output_path = os.path.join(base_dir, "mahadevi_history.json")
     try:
         records = scrape_mahadevi_chart()
         print(f"Successfully scraped {len(records)} records ({len([r for r in records if r['is_valid']])} valid draws).")
