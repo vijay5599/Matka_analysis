@@ -825,6 +825,7 @@ def predict_yesterday_sum(df_history, target_date):
     }
 
 def predict_weekly_repeat(df_history, target_date):
+    import math
     if isinstance(target_date, str):
         target_dt = pd.to_datetime(target_date)
     else:
@@ -834,7 +835,9 @@ def predict_weekly_repeat(df_history, target_date):
     
     df_same_weekday = df_history[(df_history["weekday_num"] == target_day_of_week) & (df_history["date"] < target_dt)]
     df_same_weekday = df_same_weekday.sort_values("date", ascending=False).reset_index(drop=True)
-    same_weekday_entries = df_same_weekday.head(5)
+    
+    # 6-week lookback
+    same_weekday_entries = df_same_weekday.head(6)
     
     if len(same_weekday_entries) < 2:
         fallback = predict_date_touch(target_dt)
@@ -842,14 +845,17 @@ def predict_weekly_repeat(df_history, target_date):
         fallback["description"] = f"Fallback to Date Touch: Not enough same weekday history (< 2 entries)."
         return fallback
         
-    counts = [0] * 10
-    for _, entry in same_weekday_entries.iterrows():
-        counts[int(entry["open_single"])] += 1
-        counts[int(entry["close_single"])] += 1
+    # Exponential decay weighting
+    decay_factor = 0.15
+    scores = [0.0] * 10
+    for idx, entry in same_weekday_entries.iterrows():
+        weight = math.exp(-decay_factor * idx)
+        scores[int(entry["open_single"])] += weight
+        scores[int(entry["close_single"])] += weight
         
     sorted_digits = sorted(
-        [{"digit": str(d), "count": count} for d, count in enumerate(counts)],
-        key=lambda x: x["count"],
+        [{"digit": str(d), "score": score} for d, score in enumerate(scores)],
+        key=lambda x: x["score"],
         reverse=True
     )
     
@@ -881,10 +887,10 @@ def predict_weekly_repeat(df_history, target_date):
     weekdays_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     weekday_name = weekdays_names[target_day_of_week]
     
-    freq_desc = ", ".join([f"{d['digit']} (count: {d['count']})" for d in sorted_digits[:3]])
+    freq_desc = ", ".join([f"{d['digit']} (score: {d['score']:.2f})" for d in sorted_digits[:3]])
     desc = (
-        f"Analyzes the past {len(same_weekday_entries)} {weekday_name} charts to find recurring hot numbers. "
-        f"Frequency: {freq_desc}. Top 2 digits are {sorted_digits[0]['digit']} (Cut: {get_cut_number(sorted_digits[0]['digit'])}) "
+        f"Analyzes the past {len(same_weekday_entries)} {weekday_name} charts using exponential decay weighting (lookback=6, decay=0.15) to find recurring hot numbers. "
+        f"Weighted Scores: {freq_desc}. Top 2 digits are {sorted_digits[0]['digit']} (Cut: {get_cut_number(sorted_digits[0]['digit'])}) "
         f"and {sorted_digits[1]['digit']} (Cut: {get_cut_number(sorted_digits[1]['digit'])})."
     )
     

@@ -1472,7 +1472,7 @@ if nav_selection == "🔮 Live Predictions":
                 lead_df = pd.DataFrame(results)
                 lead_df_display = lead_df[["name", "touchHit", "singleHit", "jodiHit", "panaHit"]].copy()
                 lead_df_display.columns = ["Model Name", "Touch Hit", "Single Hit", "Jodi Hit", "Pana Hit"]
-                styled_lead = lead_df_display.style.applymap(
+                styled_lead = lead_df_display.style.map(
                     highlight_hits, subset=["Touch Hit", "Single Hit", "Jodi Hit", "Pana Hit"]
                 )
                 st.dataframe(styled_lead, use_container_width=True, hide_index=True)
