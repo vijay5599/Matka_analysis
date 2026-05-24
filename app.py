@@ -9,6 +9,7 @@ import altair as alt
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 
 from scraper import scrape_mahadevi_chart
+# from scraper_live import scrape_live
 from models import (
     load_data, MatkaPredictionEngine, get_basic_statistics, CUT_NUMBERS, get_panas_for_digit,
     predict_date_touch, predict_yesterday_sum, predict_weekly_repeat, predict_panel_multiplier,
@@ -365,25 +366,23 @@ st.markdown("""
 # Helper function to trigger scraping/updating data
 def sync_live_data():
     market = st.session_state.get("selected_market", "Mahadevi")
-    with st.spinner(f"Scraping live {market} records from tara567... Please wait."):
+
+    with st.spinner(f"Scraping live {market} records via browser... Please wait (~30s)."):
         try:
             records = scrape_mahadevi_chart(market_name=market)
+            if not records:
+                raise ValueError("Scraper returned 0 records.")
+
             base_dir = os.path.dirname(os.path.abspath(__file__))
             filename = "mahadevi_history.json"
-            if market == "Mahadevi Morning":
-                filename = "mahadevi_morning_history.json"
-            elif market == "Mahadevi Night":
-                filename = "mahadevi_night_history.json"
-                
             output_path = os.path.join(base_dir, filename)
             with open(output_path, "w") as f:
                 json.dump(records, f, indent=4)
-            st.toast(f"{market} database updated successfully!", icon="🔥")
-            # Force cache clear for reload
+            st.toast(f"✅ {market} updated! {len(records)} records pulled live.", icon="🔥")
             st.cache_data.clear()
             st.rerun()
         except Exception as e:
-            st.error(f"Failed to scrape: {e}")
+            st.error(f"Live scrape failed: {e}")
 
 # Load cached data
 @st.cache_data
@@ -898,6 +897,90 @@ with st.sidebar:
     st.button("🔄 Sync Live Matka Data", on_click=sync_live_data, use_container_width=True)
     
     st.markdown("---")
+    
+    # ── Manual Result Entry ────────────────────────────────────────────────
+    _expand_manual = st.session_state.pop("expand_manual_entry", False)
+    with st.expander("✏️ Enter Result Manually", expanded=_expand_manual):
+        st.markdown(
+            "<small style='color:#94a3b8;'>Use this when the website doesn't show the result yet "
+            "but you already know the announced number.</small>",
+            unsafe_allow_html=True
+        )
+        manual_date = st.date_input(
+            "Draw Date",
+            value=datetime.now().date(),
+            key="manual_date"
+        )
+        col_op, col_j, col_cp = st.columns(3)
+        with col_op:
+            manual_open_pana = st.text_input("Open Pana", placeholder="e.g. 128", max_chars=3, key="manual_open_pana")
+        with col_j:
+            manual_jodi = st.text_input("Jodi", placeholder="e.g. 14", max_chars=2, key="manual_jodi")
+        with col_cp:
+            manual_close_pana = st.text_input("Close Pana", placeholder="e.g. 266", max_chars=3, key="manual_close_pana")
+
+        if st.button("💾 Save Result", use_container_width=True, key="save_manual_result"):
+            try:
+                # Validate inputs
+                if not (manual_open_pana.isdigit() and manual_jodi.isdigit() and manual_close_pana.isdigit()):
+                    st.error("All fields must be numeric digits only.")
+                elif len(manual_jodi) != 2:
+                    st.error("Jodi must be exactly 2 digits (e.g. 14).")
+                else:
+                    open_single = int(manual_jodi[0])
+                    close_single = int(manual_jodi[1])
+                    date_str = manual_date.strftime("%Y-%m-%d")
+                    weekday_name = manual_date.strftime("%A")
+                    weekday_num = manual_date.weekday()
+
+                    # Build new record
+                    new_record = {
+                        "date": date_str,
+                        "weekday": weekday_name,
+                        "weekday_num": weekday_num,
+                        "open_pana": manual_open_pana,
+                        "jodi": manual_jodi,
+                        "close_pana": manual_close_pana,
+                        "open_single": open_single,
+                        "close_single": close_single,
+                        "is_valid": True,
+                    }
+
+                    # Load existing history
+                    base_dir = os.path.dirname(os.path.abspath(__file__))
+                    hist_filename = "mahadevi_history.json"
+                    if st.session_state.selected_market == "Mahadevi Morning":
+                        hist_filename = "mahadevi_morning_history.json"
+                    elif st.session_state.selected_market == "Mahadevi Night":
+                        hist_filename = "mahadevi_night_history.json"
+                    hist_path = os.path.join(base_dir, hist_filename)
+
+                    with open(hist_path, "r", encoding="utf-8") as f:
+                        history = json.load(f)
+
+                    # Update existing or append
+                    updated = False
+                    for i, rec in enumerate(history):
+                        if rec["date"] == date_str:
+                            history[i] = new_record
+                            updated = True
+                            break
+                    if not updated:
+                        history.append(new_record)
+
+                    # Sort chronologically and save
+                    history.sort(key=lambda x: x["date"])
+                    with open(hist_path, "w", encoding="utf-8") as f:
+                        json.dump(history, f, indent=4)
+
+                    st.success(f"✅ Result saved for {date_str}: {manual_open_pana} | {manual_jodi} | {manual_close_pana}")
+                    st.cache_data.clear()
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Error saving result: {e}")
+
+    st.markdown("---")
+
     st.markdown("<h4 style='font-family: Space Grotesk, sans-serif; color: #a855f7;'>🔮 AI Analyst Setup</h4>", unsafe_allow_html=True)
     
     env_api_key = os.environ.get("GEMINI_API_KEY", "")
